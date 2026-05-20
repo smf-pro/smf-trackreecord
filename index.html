@@ -1445,6 +1445,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
           <div>
             <div style="font-size:7px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:5px">Unité</div>
             <select id="cfg-trial-unit" class="login-input" style="font-size:11px;padding:8px 10px;background:#020502" onchange="onTrialUnitChange()">
+              <option value="months">Mois</option>
               <option value="days">Jours</option>
               <option value="hours">Heures</option>
               <option value="unlimited">Illimité</option>
@@ -1453,7 +1454,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
           </div>
           <div id="cfg-trial-qty-wrap">
             <div style="font-size:7px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:5px">Quantité</div>
-            <input id="cfg-trial-qty" class="login-input" type="number" min="1" value="30" style="font-size:11px;padding:8px 10px" oninput="updateTrialPreview()"/>
+            <input id="cfg-trial-qty" class="login-input" type="number" min="1" value="6" style="font-size:11px;padding:8px 10px" oninput="updateTrialPreview()"/>
           </div>
         </div>
         <div id="cfg-trial-preview" style="background:#020502;border:1px solid rgba(201,168,76,.1);border-radius:5px;padding:8px 12px;font-size:10px;color:var(--gold);text-align:center;margin-bottom:12px">— Chargement —</div>
@@ -1956,6 +1957,14 @@ function addTrade() {
   var amount  = parseFloat(document.getElementById('f-amount').value);
   var notes   = document.getElementById('f-nt').value.trim();
   if (!pair || !date) { toast('Remplis les champs obligatoires (actif, date).', true); return; }
+  // ── Vérification de la période de saisie autorisée (coupon / essai) ──
+  if(CURRENT_ROLE !== 'admin' && USER_ACCESS_UNTIL && USER_ACCESS_UNTIL !== 9999999999999) {
+    var maxDate = new Date(USER_ACCESS_UNTIL).toISOString().slice(0,10);
+    if(date > maxDate) {
+      toast('⚠ Date hors période couverte (jusqu\'au ' + new Date(USER_ACCESS_UNTIL).toLocaleDateString('fr-FR',{day:'2-digit',month:'short',year:'numeric'}) + '). Utilise un coupon pour étendre l\'accès.', true);
+      return;
+    }
+  }
   var dm  = {'L':'LONG','S':'SHORT'};
   var ot  = {'MK':'MARKET','LM':'LIMIT'};
   var finalAmt = !isNaN(amount) ? amount : null;
@@ -1974,6 +1983,14 @@ function saveTrade() {
   var amount  = parseFloat(document.getElementById('f-amount').value);
   var notes   = document.getElementById('f-nt').value.trim();
   if (!pair || !date) { toast('Remplis les champs obligatoires.', true); return; }
+  // ── Vérification de la période de saisie autorisée (coupon / essai) ──
+  if(CURRENT_ROLE !== 'admin' && USER_ACCESS_UNTIL && USER_ACCESS_UNTIL !== 9999999999999) {
+    var maxDate = new Date(USER_ACCESS_UNTIL).toISOString().slice(0,10);
+    if(date > maxDate) {
+      toast('⚠ Date hors période couverte (jusqu\'au ' + new Date(USER_ACCESS_UNTIL).toLocaleDateString('fr-FR',{day:'2-digit',month:'short',year:'numeric'}) + ').', true);
+      return;
+    }
+  }
   // Vérifier que la date reste dans le mois d'origine
   var origTrade = T.find(function(t){ return t.id === EDIT_ID; });
   if (origTrade && origTrade.date && date.substring(0,7) !== origTrade.date.substring(0,7)) {
@@ -3472,6 +3489,17 @@ function importJSON() {
           });
         });
         if(!newTrades.length){ toast('\u26a0 Aucun trade trouvé dans le fichier.', true); return; }
+        // ── Filtrer les trades hors période couverte par le coupon/essai ──
+        if(CURRENT_ROLE !== 'admin' && USER_ACCESS_UNTIL && USER_ACCESS_UNTIL !== 9999999999999) {
+          var cutoffISO = new Date(USER_ACCESS_UNTIL).toISOString().slice(0,10);
+          var totalBefore = newTrades.length;
+          newTrades = newTrades.filter(function(t){ return !t.date || t.date <= cutoffISO; });
+          var excluded = totalBefore - newTrades.length;
+          if(excluded > 0){
+            toast('\u2139 ' + excluded + ' trade(s) exclu(s) : hors période couverte (jusqu\'au ' + new Date(USER_ACCESS_UNTIL).toLocaleDateString('fr-FR',{day:'2-digit',month:'short',year:'numeric'}) + ').', false, 'info');
+          }
+          if(!newTrades.length){ toast('\u26a0 Aucun trade dans ta période couverte. Utilise un coupon pour étendre l\'accès.', true); return; }
+        }
         // Vérification mot de passe avant import
         var _n = newTrades, _c = newCFG;
         openPwdModal({
@@ -3818,6 +3846,7 @@ var ADMINS = [
 ];
 var CURRENT_USER = '';
 var CURRENT_ROLE  = '';
+var USER_ACCESS_UNTIL = null; // null = pas de restriction (admin/demo). Timestamp = limite de saisie des trades.
 var _pendingUser  = '';
 var _pendingRole  = '';
 var VIEW_USER     = null; // null = propre session, string = mode spectateur
@@ -3892,19 +3921,36 @@ function submitCoupon(){
   if(!code || code.length < 7){ errEl.textContent='⚠ Code invalide (format : 6 lettres + 1 chiffre).'; errEl.classList.add('show'); return; }
   if(!FIREBASE_OK || !db){ errEl.textContent='⚠ Firebase indisponible.'; errEl.classList.add('show'); return; }
   btn.classList.add('loading'); btn.textContent='⟳ Vérification...';
-  fsCouponsRef().doc(code).get().then(function(doc){
+  // Récupérer le coupon ET les données utilisateur en parallèle
+  Promise.all([
+    fsCouponsRef().doc(code).get(),
+    fsUserRef(_pendingUser).get()
+  ]).then(function(results){
     btn.classList.remove('loading'); btn.textContent='🎟 Activer le code';
-    if(!doc.exists){ errEl.textContent='⚠ Code introuvable.'; errEl.classList.add('show'); return; }
-    var data = doc.data();
+    var couponDoc = results[0];
+    var userDoc   = results[1];
+    if(!couponDoc.exists){ errEl.textContent='⚠ Code introuvable.'; errEl.classList.add('show'); return; }
+    var data = couponDoc.data();
     // 1 coupon = 1 utilisateur
     if((data.useCount || 0) >= 1){ errEl.textContent='⚠ Ce code a déjà été utilisé.'; errEl.classList.add('show'); return; }
-    var dur     = data.duration || 1;
-    var dUnit   = data.durationUnit || 'months';
-    var now     = Date.now();
-    var until = dUnit === 'hours'   ? now + dur * 3600000
-           : dUnit === 'days'    ? now + dur * 86400000
-           : dUnit === 'weeks'   ? now + dur * 7 * 86400000
-           :                       now + dur * 30 * 86400000; // months
+    var dur   = data.duration || 1;
+    var dUnit = data.durationUnit || 'months';
+    var now   = Date.now();
+    // ── Calcul de la fin de période : on étend depuis la fin d'essai ou d'accès actuel ──
+    var userData     = userDoc.exists ? userDoc.data() : {};
+    var trialEndBase = userData.trialEnds || (userData.createdAt ? userData.createdAt + 6*30*24*60*60*1000 : now);
+    var currentEnd   = Math.max(trialEndBase, userData.accessUntil || 0);
+    // Si la période actuelle est déjà expirée, on repart de maintenant
+    if(currentEnd < now) currentEnd = now;
+    var until;
+    if(dUnit === 'hours')  { until = currentEnd + dur * 3600000; }
+    else if(dUnit === 'days')   { until = currentEnd + dur * 86400000; }
+    else if(dUnit === 'weeks')  { until = currentEnd + dur * 7 * 86400000; }
+    else { // months
+      var d = new Date(currentEnd);
+      d.setMonth(d.getMonth() + dur);
+      until = d.getTime();
+    }
     var untilFmt = new Date(until).toLocaleDateString('fr-FR',{day:'2-digit',month:'short',year:'numeric'});
     // Incrémenter le compteur d'utilisations + ajouter l'utilisateur à la liste
     var p1 = fsCouponsRef().doc(code).update({
@@ -3917,6 +3963,8 @@ function submitCoupon(){
     Promise.all([p1,p2]).then(function(){
       okEl.textContent='✓ Accès activé jusqu\'au ' + untilFmt + ' !';
       okEl.classList.add('show');
+      USER_ACCESS_UNTIL = until;
+      sessionStorage.setItem('smf_access_until', String(until));
       spawnNeonBurst && spawnNeonBurst(window.innerWidth/2, window.innerHeight/2);
       setTimeout(function(){
         document.getElementById('coupon-screen').classList.remove('show');
@@ -4023,7 +4071,7 @@ function switchAdminTab(tab){
 }
 
 // ── CONFIG GLOBALE (Firestore: smf_config/defaults) ──
-var GLOBAL_CFG = { trialDuration: 30, trialUnit: 'days' };
+var GLOBAL_CFG = { trialDuration: 6, trialUnit: 'months' };
 var CHART_COLORS = { win:'#2ecc8a', loss:'#e05c6a', open:'#5b8af5', pos:'#2ecc8a', neg:'#e05c6a' };
 
 function previewChartColors(){
@@ -4070,7 +4118,7 @@ function loadGlobalConfig(){
   // Écoute temps réel : tous les utilisateurs reçoivent les changements instantanément
   _globalConfigUnsubscribe = fsGlobalConfigRef().onSnapshot(function(doc){
     if(doc.exists && doc.data()){
-      GLOBAL_CFG = { trialDuration: doc.data().trialDuration || 30, trialUnit: doc.data().trialUnit || 'days' };
+      GLOBAL_CFG = { trialDuration: doc.data().trialDuration || 6, trialUnit: doc.data().trialUnit || 'months' };
       if(doc.data().chartColors){ CHART_COLORS=Object.assign(CHART_COLORS,doc.data().chartColors); applyChartColors(); }
     }
     // Mettre à jour l'UI si le panneau admin est ouvert
@@ -4101,13 +4149,14 @@ function updateTrialPreview(){
   if(!prev) return;
   if(unit==='unlimited') prev.textContent = '∞ Accès illimité — aucune expiration';
   else if(unit==='disabled') prev.textContent = '🔒 Aucun essai — coupon obligatoire à la première connexion';
+  else if(unit==='months') prev.textContent = 'Essai de ' + qty + ' mois de saisie pour chaque nouvel inscrit';
   else if(unit==='days')  prev.textContent = 'Essai de ' + qty + ' jour' + (qty>1?'s':'') + ' pour chaque nouvel inscrit';
   else if(unit==='hours') prev.textContent = 'Essai de ' + qty + ' heure' + (qty>1?'s':'') + ' pour chaque nouvel inscrit';
 }
 
 function saveGlobalConfig(){
   var unit = document.getElementById('cfg-trial-unit').value;
-  var qty  = parseInt(document.getElementById('cfg-trial-qty').value) || 30;
+  var qty  = parseInt(document.getElementById('cfg-trial-qty').value) || 6;
   var okEl = document.getElementById('cfg-save-ok');
   if(!db){ toast('\u26a0 Firebase indisponible.',true); return; }
   var ref = fsGlobalConfigRef();
@@ -4131,13 +4180,17 @@ function saveGlobalConfig(){
 }
 
 function calcTrialEnds(){
-  var unit = GLOBAL_CFG.trialUnit || 'days';
-  var qty  = GLOBAL_CFG.trialDuration || 30;
+  var unit = GLOBAL_CFG.trialUnit || 'months';
+  var qty  = GLOBAL_CFG.trialDuration || 6;
   var now  = Date.now();
   if(unit==='unlimited') return 9999999999999;
   if(unit==='disabled')  return 0; // expiration immédiate → coupon obligatoire
   if(unit==='hours') return now + qty * 60 * 60 * 1000;
-  return now + qty * 24 * 60 * 60 * 1000; // days
+  if(unit==='days') return now + qty * 24 * 60 * 60 * 1000;
+  // months (défaut)
+  var d = new Date(now);
+  d.setMonth(d.getMonth() + qty);
+  return d.getTime();
 }
 
 // ── RÉINITIALISER TOUS LES ACCÈS ──
@@ -4297,6 +4350,9 @@ function switchLoginTab(tab) {
 function _startSession(user, role) {
   CURRENT_USER = user;
   CURRENT_ROLE  = role;
+  // Restaurer USER_ACCESS_UNTIL depuis sessionStorage si dispo
+  var storedUAU = sessionStorage.getItem('smf_access_until');
+  USER_ACCESS_UNTIL = storedUAU ? parseInt(storedUAU, 10) : null;
   sessionStorage.setItem(SESSION_KEY,'1');
   sessionStorage.setItem('smf_user', user);
   sessionStorage.setItem('smf_role', role);
@@ -4400,10 +4456,11 @@ function doLogin(){
           // ── Vérification e-mail obligatoire ──
           function _proceedAccess(data) {
             var now2 = Date.now();
-            var trialEnds2   = (data.trialEnds !== undefined && data.trialEnds !== null) ? data.trialEnds : (data.createdAt + 30*24*60*60*1000);
+            var trialEnds2   = (data.trialEnds !== undefined && data.trialEnds !== null) ? data.trialEnds : (data.createdAt + 6*30*24*60*60*1000);
             var accessUntil2 = data.accessUntil || null;
             var hasAccess2   = (accessUntil2 && accessUntil2 > now2) || (trialEnds2 > now2);
             if(hasAccess2){
+              USER_ACCESS_UNTIL = Math.max(accessUntil2 || 0, trialEnds2 || 0) || null;
               _startSession(data.user, data.role || 'user');
             } else {
               _pendingUser = data.user;
@@ -4512,7 +4569,7 @@ function doRegister(){
   var configPromise = _cfgRef
     ? _cfgRef.get().then(function(doc){
         if(doc.exists && doc.data()){
-          GLOBAL_CFG = { trialDuration: doc.data().trialDuration || 30, trialUnit: doc.data().trialUnit || 'days' };
+          GLOBAL_CFG = { trialDuration: doc.data().trialDuration || 6, trialUnit: doc.data().trialUnit || 'months' };
       if(doc.data().chartColors){ CHART_COLORS=Object.assign(CHART_COLORS,doc.data().chartColors); applyChartColors(); }
         }
       }).catch(function(e){ console.warn('config fetch:', e); })
@@ -4575,7 +4632,11 @@ function doRegister(){
           document.getElementById('r-pass').value='';
           document.getElementById('r-pass2').value='';
           setTimeout(function(){
-            if(computedTrialEnds > Date.now()){ _startSession(u, 'user'); }
+            if(computedTrialEnds > Date.now()){
+              USER_ACCESS_UNTIL = computedTrialEnds;
+              sessionStorage.setItem('smf_access_until', String(computedTrialEnds));
+              _startSession(u, 'user');
+            }
             else { _pendingUser=u; _pendingRole='user'; document.getElementById('coupon-screen').classList.add('show'); }
           }, 900);
           return;
@@ -4613,7 +4674,11 @@ function checkEmailVerified() {
       sessionStorage.removeItem('smf_pending_role');
       sessionStorage.removeItem('smf_pending_trial');
       var hasAccess = (ptrial > Date.now()) || false;
-      if(hasAccess){ _startSession(pu, pr); }
+      if(hasAccess){
+        USER_ACCESS_UNTIL = ptrial;
+        sessionStorage.setItem('smf_access_until', String(ptrial));
+        _startSession(pu, pr);
+      }
       else {
         _pendingUser = pu; _pendingRole = pr;
         document.getElementById('login-screen').classList.add('hidden');
@@ -4654,7 +4719,9 @@ function doLogout(){
   sessionStorage.removeItem(SESSION_KEY);
   sessionStorage.removeItem('smf_user');
   sessionStorage.removeItem('smf_role');
+  sessionStorage.removeItem('smf_access_until');
   CURRENT_USER = ''; CURRENT_ROLE = '';
+  USER_ACCESS_UNTIL = null;
   _pendingUser = ''; _pendingRole = '';
   T = [];
   document.getElementById('coupon-screen').classList.remove('show');
@@ -4701,7 +4768,20 @@ function loadUserData(){
   var p2 = fsCfgRef().get().then(function(doc){
     CFG = (doc.exists && doc.data() && doc.data().cfg) ? doc.data().cfg : {};
   });
-  Promise.all([p1,p2]).then(function(){
+  // ── Charger la limite d'accès de l'utilisateur depuis smf_users ──
+  var p3 = (CURRENT_ROLE !== 'admin' && fsUserRef && fsUserRef(CURRENT_USER))
+    ? fsUserRef(CURRENT_USER).get().then(function(doc){
+        if(!doc.exists) return;
+        var d = doc.data();
+        var now = Date.now();
+        var trialBase = d.trialEnds || (d.createdAt ? (() => { var dt = new Date(d.createdAt); dt.setMonth(dt.getMonth()+6); return dt.getTime(); })() : now + 6*30*24*60*60*1000);
+        var accessEnd = d.accessUntil || 0;
+        USER_ACCESS_UNTIL = Math.max(trialBase, accessEnd);
+        // Persister en sessionStorage pour survive aux rechargements
+        sessionStorage.setItem('smf_access_until', String(USER_ACCESS_UNTIL));
+      })
+    : Promise.resolve();
+  Promise.all([p1,p2,p3]).then(function(){
     document.getElementById('hdr-tc').textContent = T.length;
     XYR = new Date().getFullYear();
     renderXLS();
@@ -4814,7 +4894,7 @@ function loadAdminUsers(){
     users.forEach(function(u){
       var dt = u.createdAt ? new Date(u.createdAt).toLocaleDateString('fr-FR',{day:'2-digit',month:'short',year:'numeric'}) : '—';
       var now = Date.now();
-      var trialEnds   = u.trialEnds   || (u.createdAt ? u.createdAt + 30*24*60*60*1000 : null);
+      var trialEnds   = u.trialEnds   || (u.createdAt ? u.createdAt + 6*30*24*60*60*1000 : null);
       var accessUntil = u.accessUntil || null;
       var hasAccess   = (accessUntil && accessUntil > now) || (trialEnds && trialEnds > now);
       var accessLabel, accessColor;
