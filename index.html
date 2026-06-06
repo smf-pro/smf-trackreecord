@@ -137,6 +137,8 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;opac
 .xt tr.inline-row:hover td{background:#040d04}
 
 /* ─── LIGNE ÉDITION INLINE (trade existant) ─── */
+.sn-ed{cursor:pointer;transition:color .2s}
+.sn-ed:hover{color:var(--blue)!important;text-shadow:0 0 8px var(--blue)}
 .xt tr.tr-edit-active td{background:#020a14!important;border-top:1px solid rgba(0,204,255,.35)!important;border-bottom:1px solid rgba(0,204,255,.35)!important}
 .xt tr.tr-edit-active:hover td{background:#020a14!important}
 .ei-timer-badge{font-size:7px;color:var(--gold);letter-spacing:.05em;white-space:nowrap;transition:color .3s}
@@ -2561,7 +2563,7 @@ function openEdit(id, moKey) {
            '<button class="ei-save-btn" onclick="saveInlineEditRow('+id+',\''+moKey+'\')">✓</button>'+
            '<button class="bd" style="font-size:9px;padding:3px 7px" onclick="cancelInlineEdit('+id+',\''+moKey+'\')">✕</button>'+
            '</div>'+
-           '<div id="ei-timer-badge" class="ei-timer-badge">🔓 20s</div>'+
+           '<div id="ei-timer-badge" class="ei-timer-badge">🔓 100s</div>'+
            '</div></td>';
 
   // Appliquer le HTML + classes
@@ -2584,7 +2586,7 @@ function openEdit(id, moKey) {
   if(pEl) setTimeout(function(){ pEl.focus(); pEl.select(); }, 60);
 
   // Démarrer le timer 20s
-  var remaining = 20;
+  var remaining = 100;
   _inlineEditInterval = setInterval(function(){
     remaining--;
     var badge = document.getElementById('ei-timer-badge');
@@ -2604,7 +2606,7 @@ function openEdit(id, moKey) {
       if(badge){ badge.textContent = '💾 Sauvegarde...'; badge.style.color='var(--blue)'; }
       saveInlineEditRow(sid, smk);
     }
-  }, 20000);
+  }, 100000);
 }
 
 // ── CALCUL LIVE PENDANT L'ÉDITION INLINE ──
@@ -3388,7 +3390,7 @@ function openInpDrawer(mo) {
     var cumPctCls = (isClosed && bal) ? (cumPct>=0?'up':'dn') : '';
 
     html += '<tr id="tr-'+t.id+'" data-trade-id="'+t.id+'">';
-    html += '<td class="sn">'+(i+1)+'</td>';
+    html += '<td class="sn sn-ed" onclick="openEdit('+t.id+',\''+moKey+'\')">'+(i+1)+'</td>';
     html += '<td>'+(t.date?dmToInput(t.date):'—')+'</td>';                                         // B
     html += '<td>'+(t.dateEnd?dmToInput(t.dateEnd):'—')+'</td>';                                    // C
     html += '<td style="color:var(--mid)">'+durTxt+'</td>';                                         // D
@@ -3442,7 +3444,7 @@ function openInpDrawer(mo) {
   var today = new Date().toISOString().slice(0,10);
   var defaultDate = (today >= moMin && today <= moMax) ? today : moMin;
   html += '<tr class="inline-row" id="inline-new-row">';
-  html += '<td class="sn inline-sn">+</td>';
+  html += '<td class="sn inline-sn" onclick="submitInlineRow('+mo+')" title="Ajouter le trade" style="cursor:pointer;color:var(--green);font-size:14px;font-weight:700">+</td>';
   html += '<td><input class="ix" id="ix-date" type="text" placeholder="JJ/MM/AAAA HH:MM" maxlength="16" value="'+dmNowForDate(defaultDate)+'" oninput="dmMasque(this);updDurH()" autocomplete="off" style="min-width:130px"/></td>';
   html += '<td><input class="ix" id="ix-date-end" type="text" placeholder="JJ/MM/AAAA HH:MM" maxlength="16" oninput="dmMasque(this);updDurH()" autocomplete="off" style="min-width:130px"/></td>';
   html += '<td><input class="ix" id="ix-dur-h" type="text" readonly placeholder="—" style="min-width:54px;cursor:default;opacity:.6;pointer-events:none"/></td>';
