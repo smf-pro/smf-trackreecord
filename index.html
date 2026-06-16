@@ -1636,13 +1636,19 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
         <h2 style="display:inline-flex;align-items:center;gap:10px">🏆 Classement Global
           <span style="font-size:9px;font-family:'JetBrains Mono',monospace;font-weight:600;letter-spacing:.08em;text-transform:uppercase;padding:3px 10px;border-radius:20px;background:rgba(0,255,0,.08);border:1px solid rgba(0,255,0,.2);color:var(--green)">Live</span>
         </h2>
-        <div style="font-size:9px;color:var(--dim);margin-top:4px;letter-spacing:.06em">Classé par Total R · Admins en tête · Mis à jour en temps réel</div>
       </div>
       <button onclick="renderLeaderboard()" style="background:#030803;border:1px solid rgba(0,255,0,.15);color:var(--mid);font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:6px 14px;border-radius:4px;cursor:pointer;transition:all .15s" onmouseover="this.style.borderColor='var(--green)';this.style.color='var(--green)'" onmouseout="this.style.borderColor='rgba(0,255,0,.15)';this.style.color='var(--mid)'">↺ Actualiser</button>
     </div>
     <div style="padding:16px 22px 80px">
-      <!-- Podium top 3 -->
-      <div id="lb-podium" style="display:flex;justify-content:center;align-items:flex-end;gap:12px;margin-bottom:28px;min-height:120px"></div>
+      <!-- Filtres Elite -->
+      <div id="lb-elite-filters" style="display:flex;gap:8px;justify-content:center;margin-bottom:20px;flex-wrap:wrap">
+        <button onclick="applyLbFilter('e1')" id="lbf-e1" style="padding:7px 14px;border-radius:20px;border:1px solid rgba(201,168,76,.2);background:transparent;color:var(--dim);font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;cursor:pointer">⭐ <span id="lbf-e1-count" style="opacity:.6"></span></button>
+        <button onclick="applyLbFilter('e2')" id="lbf-e2" style="padding:7px 14px;border-radius:20px;border:1px solid rgba(201,168,76,.2);background:transparent;color:var(--dim);font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;cursor:pointer">⭐⭐ <span id="lbf-e2-count" style="opacity:.6"></span></button>
+        <button onclick="applyLbFilter('e3')" id="lbf-e3" style="padding:7px 14px;border-radius:20px;border:1px solid rgba(201,168,76,.2);background:transparent;color:var(--dim);font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;cursor:pointer">⭐⭐⭐ <span id="lbf-e3-count" style="opacity:.6"></span></button>
+        <button onclick="applyLbFilter('e4')" id="lbf-e4" style="padding:7px 14px;border-radius:20px;border:1px solid rgba(201,168,76,.2);background:transparent;color:var(--dim);font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;cursor:pointer">⭐⭐⭐⭐ <span id="lbf-e4-count" style="opacity:.6"></span></button>
+        <button onclick="applyLbFilter('e5')" id="lbf-e5" style="padding:7px 14px;border-radius:20px;border:1px solid rgba(201,168,76,.2);background:transparent;color:var(--dim);font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;cursor:pointer">⭐⭐⭐⭐⭐ <span id="lbf-e5-count" style="opacity:.6"></span></button>
+      </div>
+      <div id="lb-podium" style="display:none"></div>
       <!-- Tableau -->
       <div id="lb-table-wrap" style="overflow-x:auto">
         <table style="width:100%;border-collapse:collapse;font-size:11px;min-width:700px">
@@ -5722,9 +5728,18 @@ function updateLeaderboardStats(){
     else if(T[j].sts===curType) curStreak++;
     else break;
   }
+  // Mois distincts avec au moins 1 trade
+  var _months = {};
+  T.forEach(function(t){ var d=(t.date||'').slice(0,7); if(d.length===7) _months[d]=true; });
+  var monthsWithData = Object.keys(_months).length;
+
+  // Mise à jour du badge étoile dans la nav + détection milestone
+  if(typeof updateEliteBadge === 'function') updateEliteBadge();
+
   fsLeaderboardRef().doc(CURRENT_USER).set({
     user: CURRENT_USER,
     role: CURRENT_ROLE,
+    monthsWithData: monthsWithData,
     totalR: parseFloat(totalR.toFixed(2)),
     avgRR: parseFloat(avgRR.toFixed(2)),
     winRate: winRate,
@@ -6955,6 +6970,53 @@ function loadUserData(){
 
 function saveUserData(){ /* Firestore sync per operation — nothing to do */ }
 
+// ── BADGE ELITE ──
+function updateEliteBadge(){
+  var months = {};
+  (T||[]).forEach(function(t){ var d=(t.date||'').slice(0,7); if(d.length===7) months[d]=true; });
+  var m = Object.keys(months).length;
+  var tier = m>=60?'e5':m>=36?'e3':m>=12?'e1':null;
+  var stars = tier==='e5'?'⭐⭐⭐⭐⭐':tier==='e4'?'⭐⭐⭐⭐':tier==='e3'?'⭐⭐⭐':tier==='e2'?'⭐⭐':tier==='e1'?'⭐':'';
+
+  // Badge étoile dans la nav
+  var el = document.getElementById('hdr-elite-badge');
+  if(!el){
+    var badge = document.getElementById('hdr-user-badge');
+    if(badge){
+      el = document.createElement('span');
+      el.id = 'hdr-elite-badge';
+      el.style.cssText = 'font-size:11px;margin-left:5px;cursor:default;';
+      badge.appendChild(el);
+    }
+  }
+  if(el) el.textContent = stars;
+
+  // Détection franchissement de palier
+  var prevTier = localStorage.getItem('smf_elite_tier_'+CURRENT_USER) || '';
+  if(tier && tier !== prevTier && prevTier !== ''){
+    var labels = {e1:'⭐ 1 Étoile',e2:'⭐⭐ 2 Étoiles',e3:'⭐⭐⭐ 3 Étoiles',e4:'⭐⭐⭐⭐ 4 Étoiles',e5:'⭐⭐⭐⭐⭐ 5 Étoiles'};
+    showEliteMilestone(labels[tier]);
+  }
+  if(tier) localStorage.setItem('smf_elite_tier_'+CURRENT_USER, tier);
+}
+
+function showEliteMilestone(label){
+  var ovl = document.createElement('div');
+  ovl.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:99999;display:flex;align-items:center;justify-content:center';
+  var box = document.createElement('div');
+  box.style.cssText = 'background:#030f03;border:1px solid var(--gold);border-radius:14px;padding:36px 48px;text-align:center;max-width:340px;box-shadow:0 0 60px rgba(201,168,76,.3)';
+  box.innerHTML = '<div style="font-size:48px;margin-bottom:12px">🏆</div>'
+    +'<div style="font-family:Syne,sans-serif;font-size:18px;font-weight:800;color:var(--gold);margin-bottom:8px">Nouveau rang atteint !</div>'
+    +'<div style="font-size:22px;margin-bottom:16px">'+label+'</div>'
+    +'<div style="font-size:11px;color:var(--dim);margin-bottom:24px">Félicitations, tu as franchi un nouveau palier Elite.</div>'
+    +'<button id="elite-milestone-btn" style="padding:10px 28px;background:linear-gradient(135deg,var(--gold),#9a7520);color:#000;border:none;border-radius:6px;font-family:JetBrains Mono,monospace;font-size:11px;font-weight:700;cursor:pointer;letter-spacing:.05em">🎯 Continuer</button>';
+  ovl.appendChild(box);
+  document.body.appendChild(ovl);
+  ovl.addEventListener('click', function(e){ if(e.target===ovl) ovl.remove(); });
+  box.querySelector('#elite-milestone-btn').addEventListener('click', function(){ ovl.remove(); });
+}
+
+
 function applyUserUI(){
   var user = CURRENT_USER;
   var role = CURRENT_ROLE;
@@ -6963,6 +7025,7 @@ function applyUserUI(){
   if(badge){
     var roleLabel = role==='admin' ? '<span class="role-badge admin">Admin</span>' : role==='demo' ? '<span class="role-badge" style="background:rgba(201,168,76,.12);border:1px solid rgba(201,168,76,.3);color:var(--gold)">Démo</span>' : '<span class="role-badge user">User</span>';
     badge.innerHTML = user + roleLabel;
+    updateEliteBadge();
   }
   // Boutons selon rôle
   var btnVider      = document.getElementById('btn-vider');
@@ -7492,106 +7555,145 @@ function renderRRCharts() {
   }
 }
 
-function renderLeaderboard(){
-  var tbody   = document.getElementById('lb-tbody');
-  var podium  = document.getElementById('lb-podium');
-  if(!tbody) return;
-  tbody.innerHTML  = '<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--dim);font-size:10px">\u23f3 Chargement du classement...</td></tr>';
+// -- Globals filtres leaderboard
+var _lbAllRows = [];
+var _lbActiveFilter = 'e1';
+
+function _getTier(m){
+  if(m >= 60) return 'e5';
+  if(m >= 36) return 'e4';
+  if(m >= 24) return 'e3';
+  if(m >= 12) return 'e2';
+  if(m >= 1)  return 'e1';
+  return null;
+}
+
+function applyLbFilter(filter){
+  _lbActiveFilter = filter;
+  var defs = {
+    'e1': {bg:'rgba(201,168,76,.15)', bdr:'var(--gold)', clr:'var(--gold)'},
+    'e2': {bg:'rgba(201,168,76,.15)', bdr:'var(--gold)', clr:'var(--gold)'},
+    'e3': {bg:'rgba(201,168,76,.15)', bdr:'var(--gold)', clr:'var(--gold)'},
+    'e4': {bg:'rgba(201,168,76,.15)', bdr:'var(--gold)', clr:'var(--gold)'},
+    'e5': {bg:'rgba(201,168,76,.15)', bdr:'var(--gold)', clr:'var(--gold)'}
+  };
+  ['e1','e2','e3','e4','e5'].forEach(function(f){
+    var btn = document.getElementById('lbf-'+f);
+    if(!btn) return;
+    var active = (f === filter);
+    var d = defs[f];
+    btn.style.background  = active ? d.bg  : 'transparent';
+    btn.style.borderColor = active ? d.bdr : 'rgba(201,168,76,.2)';
+    btn.style.color       = active ? d.clr : 'var(--dim)';
+  });
+  _renderLbRows(_lbAllRows, filter);
+}
+
+function _renderLbRows(all, filter){
+  var tbody  = document.getElementById('lb-tbody');
+  var podium = document.getElementById('lb-podium');
+
+  var filtered = all.filter(function(u){ return _getTier(u.monthsWithData||0) === filter; });
+
+  if(!filtered.length){
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--dim);font-size:10px">Aucun trader dans ce rang.</td></tr>';
+    podium.innerHTML = '';
+    return;
+  }
+
+  // -- Podium
+  var podiumUsers = filtered.filter(function(u){ return u.role!=='admin'; }).slice(0,3);
+  var podiumBorders = ['rgba(192,192,192,.3)','rgba(201,168,76,.5)','rgba(205,127,50,.3)'];
+  var podiumColors  = ['rgba(192,192,192,.15)','rgba(201,168,76,.2)','rgba(205,127,50,.12)'];
   podium.innerHTML = '';
-  if(!FIREBASE_OK||!db){ tbody.innerHTML='<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--red);font-size:10px">\u26a0 Firebase indisponible.</td></tr>'; return; }
+  if(podiumUsers.length >= 2){
+  }
+
+  // -- Tableau
+  var html = '';
+  filtered.forEach(function(u, idx){
+    var rank = idx+1;
+    var isAdmin = u.role==='admin', isMe = u.user===CURRENT_USER;
+    var medal = rank===1?'\uD83E\uDD47':rank===2?'\uD83E\uDD48':rank===3?'\uD83E\uDD49':'';
+    var rClr  = (u.totalR||0)>=0?'var(--green)':'var(--red)';
+    var wrClr = (u.winRate||0)>=50?'var(--green)':'var(--red)';
+    var rowBg  = isMe?'rgba(0,255,0,.03)':isAdmin?'rgba(201,168,76,.03)':'';
+    var rowBdr = isMe?'1px solid rgba(0,255,0,.15)':isAdmin?'1px solid rgba(201,168,76,.12)':'1px solid rgba(0,255,0,.06)';
+    var roleBadge = isAdmin
+      ? '<span style="font-size:7px;padding:2px 7px;border-radius:10px;background:rgba(201,168,76,.12);border:1px solid rgba(201,168,76,.3);color:var(--gold);font-weight:700">\uD83D\uDC51 ADMIN</span>'
+      : '<span style="font-size:7px;padding:2px 7px;border-radius:10px;background:rgba(0,255,0,.08);border:1px solid rgba(0,255,0,.2);color:var(--green);font-weight:700">TRADER</span>';
+    var meBadge = isMe?'<span style="font-size:7px;padding:2px 6px;border-radius:10px;background:rgba(0,204,255,.1);border:1px solid rgba(0,204,255,.3);color:var(--blue);font-weight:700;margin-left:4px">VOUS</span>':'';
+    var tier = _getTier(u.monthsWithData||0);
+    var _sm={'e1':'⭐','e2':'⭐⭐','e3':'⭐⭐⭐','e4':'⭐⭐⭐⭐','e5':'⭐⭐⭐⭐⭐'};
+    var tierBadge = tier?'<span style="font-size:10px;margin-left:4px" title="'+u.monthsWithData+' mois">'+_sm[tier]+'</span>':'';
+    var streakTxt = u.curStreak&&u.curStreakType
+      ?(u.curStreakType==='WIN'?'<span style="color:var(--green);font-weight:700">+'+u.curStreak+' \u2191</span>':'<span style="color:var(--red);font-weight:700">-'+u.curStreak+' \u2193</span>')
+      :'<span style="color:var(--dim)">\u2014</span>';
+    var bmTxt = u.bestMonthKey
+      ?(function(k){var p=k.split('-');return ['Jan','F\u00E9v','Mar','Avr','Mai','Jun','Jul','Ao\u00FB','Sep','Oct','Nov','D\u00E9c'][parseInt(p[1])-1]+' '+p[0];})(u.bestMonthKey)
+        +' <span style="color:var(--green);font-weight:700">'+(u.bestMonthR>=0?'+':'')+u.bestMonthR+'R</span>'
+      :'<span style="color:var(--dim)">\u2014</span>';
+
+    html += '<tr style="background:'+rowBg+';cursor:'+(isMe?'default':'pointer')+'" '+(isMe?'':' onclick="viewUserProfile(\''+u.user+'\')" onmouseover="this.style.outline=\'1px solid rgba(201,168,76,.3)\'" onmouseout="this.style.outline=\'\'"')+'>';
+    html += '<td style="padding:10px 14px;border:'+rowBdr+';text-align:center;font-size:13px">'+medal+(medal?'':'<span style="color:var(--dim);font-size:9px">'+rank+'</span>')+'</td>';
+    html += '<td style="padding:10px 14px;border:'+rowBdr+'"><div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px"><span style="font-size:12px;font-weight:700;color:var(--white)">'+u.user+'</span>'+roleBadge+meBadge+tierBadge+'</div></td>';
+    html += '<td style="padding:10px 14px;border:'+rowBdr+';text-align:center;font-size:14px;font-weight:700;color:'+rClr+'">'+(u.totalR>=0?'+':'')+u.totalR+'R</td>';
+    html += '<td style="padding:10px 14px;border:'+rowBdr+';text-align:center;font-size:12px;font-weight:700;color:'+wrClr+'">'+u.winRate+'%</td>';
+    html += '<td style="padding:10px 14px;border:'+rowBdr+';text-align:center;color:var(--mid);font-size:10px">'+u.closedTrades+'<span style="color:var(--dim);font-size:8px"> /'+u.totalTrades+'</span></td>';
+    html += '<td style="padding:10px 14px;border:'+rowBdr+';text-align:center;color:var(--gold);font-weight:700;font-size:11px">'+(u.avgRR>=0?'+':'')+u.avgRR+'R</td>';
+    html += '<td style="padding:10px 14px;border:'+rowBdr+';text-align:center;font-size:10px">'+bmTxt+'</td>';
+    html += '<td style="padding:10px 14px;border:'+rowBdr+';text-align:center;font-size:10px">'+streakTxt+'</td>';
+    html += '</tr>';
+  });
+  tbody.innerHTML = html || '<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--dim)">Aucune donn\u00E9e.</td></tr>';
+}
+
+function renderLeaderboard(){
+  var tbody  = document.getElementById('lb-tbody');
+  var podium = document.getElementById('lb-podium');
+  if(!tbody) return;
+  tbody.innerHTML  = '<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--dim);font-size:10px">\u23F3 Chargement du classement...</td></tr>';
+  podium.innerHTML = '';
+  if(!FIREBASE_OK||!db){ tbody.innerHTML='<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--red);font-size:10px">\u26A0 Firebase indisponible.</td></tr>'; return; }
 
   fsLeaderboardRef().get().then(function(snap){
     var rows = [];
     snap.forEach(function(d){ rows.push(d.data()); });
-
-    // Séparer admins et users
     var adminOrder = ['KGB','SMF'];
-    var admins = [];
-    var users  = [];
-    rows.forEach(function(r){
-      if(r.role==='admin') admins.push(r);
-      else users.push(r);
-    });
-    // Admins dans l'ordre défini, puis users triés par totalR desc
+    var admins = [], users = [];
+    rows.forEach(function(r){ if(r.role==='admin') admins.push(r); else users.push(r); });
     admins.sort(function(a,b){ return adminOrder.indexOf(a.user)-adminOrder.indexOf(b.user); });
     users.sort(function(a,b){ return (b.totalR||0)-(a.totalR||0); });
-
     var all = admins.concat(users);
     if(!all.length){
-      tbody.innerHTML='<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--dim);font-size:10px">Aucune donn\xe9e disponible.</td></tr>';
+      tbody.innerHTML='<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--dim);font-size:10px">Aucune donn\u00E9e disponible.</td></tr>';
       return;
     }
-
-    // ── PODIUM (top 3 non-admin classés par R) ──
-    var podiumUsers = users.slice(0,3);
-    var podiumOrder = [1,0,2]; // 2e, 1er, 3e
-    var podiumH = ['80px','110px','60px'];
-    var podiumMedals = ['\ud83e\udd48','\ud83e\udd47','\ud83e\udd49'];
-    var podiumColors = ['rgba(192,192,192,.15)','rgba(201,168,76,.2)','rgba(205,127,50,.12)'];
-    var podiumBorders = ['rgba(192,192,192,.3)','rgba(201,168,76,.5)','rgba(205,127,50,.3)'];
-    podium.innerHTML = '';
-    if(podiumUsers.length >= 2){
-      [1,0,2].forEach(function(pi,vi){
-        var u = podiumUsers[pi];
-        if(!u) return;
-        var rank = pi+1;
-        var medal = ['\ud83e\udd47','\ud83e\udd48','\ud83e\udd49'][pi];
-        var h = ['110px','80px','60px'][vi];
-        var bc = podiumBorders[pi];
-        var bg = podiumColors[pi];
-        var rClr = (u.totalR||0)>=0 ? 'var(--green)' : 'var(--red)';
-        podium.innerHTML += '<div style="display:flex;flex-direction:column;align-items:center;gap:6px;flex:1;max-width:180px">'
-          +'<div style="font-size:24px">'+medal+'</div>'
-          +'<div style="font-size:11px;font-weight:700;color:var(--white)">'+u.user+'</div>'
-          +'<div style="font-size:9px;color:var(--dim)">'+u.winRate+'% WR · '+(u.closedTrades||0)+' trades</div>'
-          +'<div style="background:'+bg+';border:1px solid '+bc+';border-radius:8px 8px 0 0;width:100%;height:'+h+';display:flex;align-items:center;justify-content:center">'
-          +'<div style="font-size:20px;font-weight:700;color:'+rClr+'">'+(u.totalR>=0?'+':'')+u.totalR+'R</div>'
-          +'</div>'
-          +'</div>';
-      });
-    }
-
-    // ── TABLEAU ──
-    var html = '';
-    all.forEach(function(u, idx){
-      var rank    = idx+1;
-      var isAdmin = u.role==='admin';
-      var isMe    = u.user === CURRENT_USER;
-      var medal   = rank===1?'\ud83e\udd47':rank===2?'\ud83e\udd48':rank===3?'\ud83e\udd49':'';
-      var rClr    = (u.totalR||0)>=0 ? 'var(--green)' : 'var(--red)';
-      var wrClr   = (u.winRate||0)>=50 ? 'var(--green)' : 'var(--red)';
-      var rowBg   = isMe ? 'rgba(0,255,0,.03)' : isAdmin ? 'rgba(201,168,76,.03)' : '';
-      var rowBdr  = isMe ? '1px solid rgba(0,255,0,.15)' : isAdmin ? '1px solid rgba(201,168,76,.12)' : '1px solid rgba(0,255,0,.06)';
-      var roleBadge = isAdmin
-        ? '<span style="font-size:7px;padding:2px 7px;border-radius:10px;background:rgba(201,168,76,.12);border:1px solid rgba(201,168,76,.3);color:var(--gold);font-weight:700;letter-spacing:.05em">\ud83d\udc51 ADMIN</span>'
-        : '<span style="font-size:7px;padding:2px 7px;border-radius:10px;background:rgba(0,255,0,.08);border:1px solid rgba(0,255,0,.2);color:var(--green);font-weight:700;letter-spacing:.05em">TRADER</span>';
-      var meBadge = isMe ? ' <span style="font-size:7px;padding:2px 6px;border-radius:10px;background:rgba(0,204,255,.1);border:1px solid rgba(0,204,255,.3);color:var(--blue);font-weight:700">VOUS</span>' : '';
-      // Streak
-      var streakTxt = u.curStreak && u.curStreakType
-        ? (u.curStreakType==='WIN'
-          ? '<span style="color:var(--green);font-weight:700">+'+u.curStreak+' \u2191</span>'
-          : '<span style="color:var(--red);font-weight:700">-'+u.curStreak+' \u2193</span>')
-        : '<span style="color:var(--dim)">—</span>';
-      // Meilleur mois
-      var bmTxt = u.bestMonthKey
-        ? (function(k){ var p=k.split('-'); return ['Jan','F\xe9v','Mar','Avr','Mai','Jun','Jul','Ao\xfb','Sep','Oct','Nov','D\xe9c'][parseInt(p[1])-1]+' '+p[0]; })(u.bestMonthKey)
-          +' <span style="color:var(--green);font-weight:700">'+(u.bestMonthR>=0?'+':'')+u.bestMonthR+'R</span>'
-        : '<span style="color:var(--dim)">—</span>';
-
-      html += '<tr style="background:'+rowBg+';cursor:'+(isMe?'default':'pointer')+'" '+(isMe?'':' onclick="viewUserProfile(\''+u.user+'\')" onmouseover="if(!'+isMe+')this.style.outline=\'1px solid rgba(201,168,76,.3)\'" onmouseout="this.style.outline=\'\'"')+'>';
-      html += '<td style="padding:10px 14px;border:'+rowBdr+';text-align:center;font-size:13px">'+medal+(medal?'':'<span style="color:var(--dim);font-size:9px">'+rank+'</span>')+'</td>';
-      html += '<td style="padding:10px 14px;border:'+rowBdr+'"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;font-weight:700;color:var(--white)">'+u.user+'</span>'+roleBadge+meBadge+'</div></td>';
-      html += '<td style="padding:10px 14px;border:'+rowBdr+';text-align:center;font-size:14px;font-weight:700;color:'+rClr+'">'+(u.totalR>=0?'+':'')+u.totalR+'R</td>';
-      html += '<td style="padding:10px 14px;border:'+rowBdr+';text-align:center;font-size:12px;font-weight:700;color:'+wrClr+'">'+u.winRate+'%</td>';
-      html += '<td style="padding:10px 14px;border:'+rowBdr+';text-align:center;color:var(--mid);font-size:10px">'+u.closedTrades+'<span style="color:var(--dim);font-size:8px"> /'+u.totalTrades+'</span></td>';
-      html += '<td style="padding:10px 14px;border:'+rowBdr+';text-align:center;color:var(--gold);font-weight:700;font-size:11px">'+(u.avgRR>=0?'+':'')+u.avgRR+'R</td>';
-      html += '<td style="padding:10px 14px;border:'+rowBdr+';text-align:center;font-size:10px">'+bmTxt+'</td>';
-      html += '<td style="padding:10px 14px;border:'+rowBdr+';text-align:center;font-size:10px">'+streakTxt+'</td>';
-      html += '</tr>';
+    // monthsWithData: utiliser le champ stocke si present, sinon charger les trades (migration)
+    var promises = all.map(function(u){
+      // Champ present (utilisateur reconnecte apres le fix) -> lecture directe, sans requete
+      if(u.monthsWithData !== undefined && u.monthsWithData !== null) return Promise.resolve(u);
+      // Champ absent (ancien utilisateur) -> fallback lecture trades
+      return db.collection('smf_recorder').doc(u.user).collection('trades').get()
+        .then(function(ts){
+          var months={};
+          ts.forEach(function(td){ var d=(td.data().date||'').slice(0,7); if(d.length===7) months[d]=true; });
+          u.monthsWithData = Object.keys(months).length;
+          return u;
+        }).catch(function(){ u.monthsWithData=0; return u; });
     });
-    tbody.innerHTML = html || '<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--dim)">Aucune donn\xe9e.</td></tr>';
+    Promise.all(promises).then(function(enriched){
+      _lbAllRows = enriched;
+      var c={e1:0,e2:0,e3:0,e4:0,e5:0};
+      enriched.forEach(function(u){ var t=_getTier(u.monthsWithData||0); if(t) c[t]++; });
+      ['e1','e2','e3','e4','e5'].forEach(function(t){
+        var el=document.getElementById('lbf-'+t+'-count');
+        if(el) el.textContent = c[t]?'('+c[t]+')':'';
+      });
+      applyLbFilter(_lbActiveFilter);
+    });
   }).catch(function(e){
-    tbody.innerHTML='<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--red);font-size:10px">\u26a0 Erreur: '+e.message+'</td></tr>';
+    tbody.innerHTML='<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--red);font-size:10px">\u26A0 Erreur: '+e.message+'</td></tr>';
   });
 }
 
