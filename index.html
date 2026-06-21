@@ -1911,7 +1911,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
           <th class="sn">#</th>
           <th>Date Entrée</th><th>Date Fin</th><th>Durée</th>
           <th>Actif</th><th>Session</th><th>Direction</th><th>Ordre</th><th>Lot</th>
-          <th>Montant $</th><th>Stratégie</th><th>Conf. Tech</th><th>Conf. Fund</th><th>Management</th>
+          <th>Montant $</th><th>Stratégie</th><th>Management</th>
           <th>Résultat</th><th>RR</th><th>RR Cumulé</th>
           <th>%</th><th>Drawdown</th><th>% Cumulé</th>
           <th>Actions</th>
@@ -2540,10 +2540,6 @@ function openEdit(id, moKey) {
            ' oninput="_eiCalc()" style="min-width:72px"/></td>';
   // Stratégie
   html += '<td><input class="ix" id="ei-strat" type="text" value="'+(t.strat||'').replace(/"/g,'&quot;')+'" style="min-width:90px"/></td>';
-  // Conf Tech
-  html += '<td><input class="ix" id="ei-conf-tech" type="text" value="'+(t.confTech||'').replace(/"/g,'&quot;')+'" style="min-width:90px"/></td>';
-  // Conf Fund
-  html += '<td><input class="ix" id="ei-conf-fund" type="text" value="'+(t.confFund||'').replace(/"/g,'&quot;')+'" style="min-width:90px"/></td>';
   // Management
   html += '<td><select class="ix-sel" id="ei-mgmt" style="min-width:100px">'+
            opt('',mgmtV,'—')+opt('AGRESSIF',mgmtV,'AGRESSIF')+opt('CONSERVATEUR',mgmtV,'CONSERVATEUR')+'</select></td>';
@@ -2684,8 +2680,6 @@ function saveInlineEditRow(id, moKey) {
   var ot       = (document.getElementById('ei-ot')||{}).value||'MARKET';
   var session  = (document.getElementById('ei-session')||{}).value||null;
   var strat    = (document.getElementById('ei-strat')||{}).value||null;
-  var confTech = (document.getElementById('ei-conf-tech')||{}).value||null;
-  var confFund = (document.getElementById('ei-conf-fund')||{}).value||null;
   var mgmt     = (document.getElementById('ei-mgmt')||{}).value||null;
   var durEl    = document.getElementById('ei-dur');
   var durRaw   = durEl ? durEl.value : '';
@@ -2700,7 +2694,7 @@ function saveInlineEditRow(id, moKey) {
   T[idx] = { id:id, date:date, dateEnd:dateEnd, durationH:durH, pair:pair,
               dir:dir, orderType:ot, lots:(!isNaN(lots)?lots:null),
               amount:finalAmt, sts:sts, notes:(t.notes||''),
-              session:session||null, strat:strat, confTech:confTech, confFund:confFund, mgmt:mgmt };
+              session:session||null, strat:strat, mgmt:mgmt };
 
   _clearInlineEditTimers();
   _inlineEditId=null; _inlineEditMoKey=null;
@@ -3412,13 +3406,9 @@ function openInpDrawer(mo) {
 
     // Stratégie / Conf / Management (avant Résultat)
     var stratTxt = t.strat||'—';
-    var ctTxt = t.confTech||'—';
-    var cfTxt = t.confFund||'—';
     var mgmtTxt = t.mgmt||'—';
     var mgmtCls = t.mgmt==='AGRESSIF'?'style="color:#ff6b35;font-size:9px;font-weight:700"':t.mgmt==='CONSERVATEUR'?'style="color:var(--green);font-size:9px;font-weight:700"':'style="color:var(--dim);font-size:9px"';
     html += '<td style="font-size:9px;color:var(--text);max-width:90px;overflow:hidden;text-overflow:ellipsis">'+stratTxt+'</td>';
-    html += '<td style="font-size:9px;color:var(--dim);max-width:90px;overflow:hidden;text-overflow:ellipsis">'+ctTxt+'</td>';
-    html += '<td style="font-size:9px;color:var(--dim);max-width:90px;overflow:hidden;text-overflow:ellipsis">'+cfTxt+'</td>';
     html += '<td '+mgmtCls+'>'+mgmtTxt+'</td>';
 
     // Résultat auto (basé sur montant si fermé, sinon statut)
@@ -3465,14 +3455,8 @@ function openInpDrawer(mo) {
   html += '<td><input class="ix" id="ix-amount" type="number" step="any" placeholder="±$" style="min-width:72px" oninput="calcInlinePv()"/></td>';
   // Datalists pour autocomplete inline
   var knownStrats = Array.from(new Set(T.map(function(x){return x.strat||'';}).filter(Boolean))).sort();
-  var knownCT     = Array.from(new Set(T.map(function(x){return x.confTech||'';}).filter(Boolean))).sort();
-  var knownCF     = Array.from(new Set(T.map(function(x){return x.confFund||'';}).filter(Boolean))).sort();
   var dlStrat = '<datalist id="dl-ix-strat">'+knownStrats.map(function(p){return '<option value="'+p+'">';}).join('')+'</datalist>';
-  var dlCT    = '<datalist id="dl-ix-ct">'+knownCT.map(function(p){return '<option value="'+p+'">';}).join('')+'</datalist>';
-  var dlCF    = '<datalist id="dl-ix-cf">'+knownCF.map(function(p){return '<option value="'+p+'">';}).join('')+'</datalist>';
   html += '<td>'+dlStrat+'<input class="ix" id="ix-strat" type="text" list="dl-ix-strat" placeholder="Stratégie" style="min-width:90px" autocomplete="off"/></td>';
-  html += '<td>'+dlCT+'<input class="ix" id="ix-conf-tech" type="text" list="dl-ix-ct" placeholder="Conf. Tech" style="min-width:90px" autocomplete="off"/></td>';
-  html += '<td>'+dlCF+'<input class="ix" id="ix-conf-fund" type="text" list="dl-ix-cf" placeholder="Conf. Fund" style="min-width:90px" autocomplete="off"/></td>';
   html += '<td><select class="ix-sel" id="ix-mgmt" style="min-width:100px"><option value="" disabled selected hidden></option><option value="AGRESSIF">AGRESSIF</option><option value="CONSERVATEUR">CONSERVATEUR</option></select></td>';
   html += '<td id="ix-res" style="font-size:9px;font-weight:700;color:var(--dim)">◉ OPEN</td>';
   html += '<td id="ix-rr" style="color:var(--dim);font-size:9px">—</td>';
@@ -3589,8 +3573,6 @@ function submitInlineRow(mo) {
   var date    = dmFromInput(document.getElementById('ix-date').value);
   var dateEnd = dmFromInput(document.getElementById('ix-date-end').value)||null;
   var ixStrat    = (document.getElementById('ix-strat')||{}).value||null;
-  var ixConfTech = (document.getElementById('ix-conf-tech')||{}).value||null;
-  var ixConfFund = (document.getElementById('ix-conf-fund')||{}).value||null;
   var ixMgmt     = (document.getElementById('ix-mgmt')||{}).value||null;
   var dir     = document.getElementById('ix-dir').value;
   var ot      = document.getElementById('ix-ot').value;
@@ -3623,7 +3605,7 @@ function submitInlineRow(mo) {
   var durHMatch = durHRaw ? durHRaw.match(/([\d.]+)/) : null;
   var durH = durHMatch ? parseFloat(durHMatch[1]) : null;
   var sts = amount !== null ? (amount > 0 ? 'WIN' : amount < 0 ? 'LOSS' : 'OPEN') : 'OPEN';
-  var newTrade = { id:Date.now(), date:date, dateEnd:dateEnd, durationH:durH, pair:pair, session:sessionV||null, dir:dir, orderType:ot, lots:(!isNaN(lots)?lots:null), amount:amount, sts:sts, notes:'', strat:ixStrat, confTech:ixConfTech, confFund:ixConfFund, mgmt:ixMgmt };
+  var newTrade = { id:Date.now(), date:date, dateEnd:dateEnd, durationH:durH, pair:pair, session:sessionV||null, dir:dir, orderType:ot, lots:(!isNaN(lots)?lots:null), amount:amount, sts:sts, notes:'', strat:ixStrat, mgmt:ixMgmt };
   T.push(newTrade);
   fsSaveTrade(newTrade);
   save();
@@ -3843,13 +3825,14 @@ function renderDash() {
       // ── Construire un index trades par date ──
       var byDate = {};
       closedSorted.forEach(function(t){
-        if(!byDate[t.date]) byDate[t.date] = [];
-        byDate[t.date].push(t);
+        var dk=(t.date||'').slice(0,10);
+        if(!byDate[dk]) byDate[dk] = [];
+        byDate[dk].push(t);
       });
 
       // ── Itérer chaque semaine entre premier et dernier trade ──
-      var firstDate = new Date(closedSorted[0].date);
-      var lastDate  = new Date(closedSorted[closedSorted.length-1].date);
+      var firstDate = new Date(closedSorted[0].date.slice(0,10)+'T12:00:00');
+      var lastDate  = new Date(closedSorted[closedSorted.length-1].date.slice(0,10)+'T12:00:00');
 
       // Reculer au lundi de la première semaine
       firstDate.setDate(firstDate.getDate() - firstDate.getDay() + (firstDate.getDay()===0?-6:1));
@@ -4701,12 +4684,13 @@ function commonCharts(pfx,s){
     // Index par date
     var byDate={};
     closedSorted.forEach(function(t){
-      if(!byDate[t.date])byDate[t.date]=[];
-      byDate[t.date].push(t);
+      var dk=(t.date||'').slice(0,10);
+      if(!byDate[dk])byDate[dk]=[];
+      byDate[dk].push(t);
     });
     // Bornes
-    var firstDate=new Date(closedSorted[0].date+'T12:00:00');
-    var lastDate=new Date(closedSorted[closedSorted.length-1].date+'T12:00:00');
+    var firstDate=new Date(closedSorted[0].date.slice(0,10)+'T12:00:00');
+    var lastDate=new Date(closedSorted[closedSorted.length-1].date.slice(0,10)+'T12:00:00');
     // Reculer au lundi
     firstDate.setDate(firstDate.getDate()-firstDate.getDay()+(firstDate.getDay()===0?-6:1));
     var cur=new Date(firstDate);
